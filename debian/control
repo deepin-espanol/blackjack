@@ -1,0 +1,16 @@
+Source: blackjack
+Section: games
+Priority: optional
+Maintainer: Deepin en Español <developers@deepinenespanol.org>
+Build-Depends: debhelper-compat (= 13),
+               cmake,
+               qt6-base-dev,
+               libdtk6widget-dev
+Standards-Version: 4.6.2
+Homepage: https://deepinenespanol.org
+
+Package: blackjack
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Classic Blackjack card game for Deepin desktop
+ A classic Blackjack (21) card game built with Qt6 and DTK6.
