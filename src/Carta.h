@@ -6,32 +6,36 @@
 enum class Palo {
     Corazones,
     Diamantes,
-    Tréboles,
+    Treboles,
     Espadas
 };
 
 struct Carta {
     Palo palo;
-    int valor;
+    int valor;  // 1 (As) .. 13 (K)
 
     QString nombreValor() const {
         switch (valor) {
-            case 1: return "A";
-            case 11: return "J";
-            case 12: return "Q";
-            case 13: return "K";
+            case 1: return QStringLiteral("A");
+            case 11: return QStringLiteral("J");
+            case 12: return QStringLiteral("Q");
+            case 13: return QStringLiteral("K");
             default: return QString::number(valor);
         }
     }
 
     QString nombrePalo() const {
         switch (palo) {
-            case Palo::Corazones: return "♥";
-            case Palo::Diamantes: return "♦";
-            case Palo::Tréboles: return "♣";
-            case Palo::Espadas: return "♠";
+            case Palo::Corazones: return QStringLiteral("♥");
+            case Palo::Diamantes: return QStringLiteral("♦");
+            case Palo::Treboles: return QStringLiteral("♣");
+            case Palo::Espadas: return QStringLiteral("♠");
         }
-        return "";
+        return QString();
+    }
+
+    bool esRoja() const {
+        return palo == Palo::Corazones || palo == Palo::Diamantes;
     }
 
     int valorBlackjack() const {

@@ -1,224 +1,366 @@
 #include "BlackjackWidget.h"
+#include "CartaPainter.h"
+
 #include <QPainter>
-#include <QPainterPath>
-#include <QFont>
-#include <QRandomGenerator>
+#include <QKeyEvent>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QSettings>
+
+namespace {
+const int ANCHO = 760;
+const int ALTO = 520;
+const int CARTA_ANCHO = 84;
+const int CARTA_ALTO = 120;
+const int Y_DEALER = 52;
+const int Y_JUGADOR = 262;
+}
 
 BlackjackWidget::BlackjackWidget(QWidget *parent)
-    : QWidget(parent), fichas(1000), apuesta(50), estado(Estado::Apostando) {
-    setFixedSize(700, 500);
+    : QWidget(parent)
+    , m_mazo(6)
+    , m_fichas(QSettings().value("fichas", FICHAS_INICIALES).toInt())
+    , m_apuesta(QSettings().value("apuesta", 50).toInt())
+    , m_ultimoResultado(0)
+    , m_estado(Estado::Apostando)
+{
+    setFixedSize(ANCHO, ALTO);
+    setFocusPolicy(Qt::StrongFocus);
 
-    btnApostarMas = new QPushButton("+50", this);
-    btnApostarMas->setGeometry(20, 440, 80, 40);
-    connect(btnApostarMas, &QPushButton::clicked, this, &BlackjackWidget::aumentarApuesta);
+    auto *barra = new QHBoxLayout();
+    barra->setSpacing(8);
+    auto crear = [this, barra](const QString &texto, void (BlackjackWidget::*slot)()) {
+        auto *b = new QPushButton(texto, this);
+        b->setFocusPolicy(Qt::NoFocus);
+        b->setMinimumHeight(36);
+        connect(b, &QPushButton::clicked, this, slot);
+        barra->addWidget(b);
+        return b;
+    };
+    m_btnMenos = crear(tr("− Apuesta"), &BlackjackWidget::reducirApuesta);
+    m_btnMas = crear(tr("+ Apuesta"), &BlackjackWidget::aumentarApuesta);
+    m_btnRepartir = crear(tr("Repartir"), &BlackjackWidget::repartir);
+    barra->addSpacing(20);
+    m_btnPedir = crear(tr("Pedir (H)"), &BlackjackWidget::pedirCarta);
+    m_btnPlantarse = crear(tr("Plantarse (S)"), &BlackjackWidget::plantarse);
+    m_btnDoblar = crear(tr("Doblar (D)"), &BlackjackWidget::doblar);
+    m_btnSiguiente = crear(tr("Nueva ronda"), &BlackjackWidget::siguienteRonda);
 
-    btnApostarMenos = new QPushButton("-50", this);
-    btnApostarMenos->setGeometry(110, 440, 80, 40);
-    connect(btnApostarMenos, &QPushButton::clicked, this, &BlackjackWidget::reducirApuesta);
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(16, 0, 16, 14);
+    layout->addStretch();
+    layout->addLayout(barra);
 
-    btnPedir = new QPushButton("Pedir", this);
-    btnPedir->setGeometry(250, 440, 100, 40);
-    connect(btnPedir, &QPushButton::clicked, this, &BlackjackWidget::pedirCarta);
-
-    btnPlantarse = new QPushButton("Plantarse", this);
-    btnPlantarse->setGeometry(360, 440, 100, 40);
-    connect(btnPlantarse, &QPushButton::clicked, this, &BlackjackWidget::plantarse);
-
-    btnNuevaRonda = new QPushButton("Nueva Ronda", this);
-    btnNuevaRonda->setGeometry(500, 440, 120, 40);
-    connect(btnNuevaRonda, &QPushButton::clicked, this, &BlackjackWidget::nuevaRonda);
-
-    lblFichas = new QLabel(this);
-    lblFichas->setGeometry(20, 10, 300, 30);
-    lblFichas->setStyleSheet("color: white; font-size: 16px; font-weight: bold;");
-
-    lblMensaje = new QLabel(this);
-    lblMensaje->setGeometry(200, 10, 300, 30);
-    lblMensaje->setStyleSheet("color: yellow; font-size: 16px; font-weight: bold;");
-    lblMensaje->setAlignment(Qt::AlignCenter);
-
+    if (m_fichas < APUESTA_MINIMA)
+        m_fichas = FICHAS_INICIALES;
+    ajustarApuesta();
+    m_mensaje = tr("Elige tu apuesta y pulsa Repartir");
     actualizarBotones();
-    lblFichas->setText(QString("Fichas: %1 | Apuesta: %2").arg(fichas).arg(apuesta));
 }
 
-void BlackjackWidget::aumentarApuesta() {
-    if (estado == Estado::Apostando && fichas >= apuesta + 50) {
-        apuesta += 50;
-        lblFichas->setText(QString("Fichas: %1 | Apuesta: %2").arg(fichas).arg(apuesta));
-    }
+void BlackjackWidget::guardar()
+{
+    QSettings s;
+    s.setValue("fichas", m_fichas);
+    s.setValue("apuesta", m_apuesta);
 }
 
-void BlackjackWidget::reducirApuesta() {
-    if (estado == Estado::Apostando && apuesta > 50) {
-        apuesta -= 50;
-        lblFichas->setText(QString("Fichas: %1 | Apuesta: %2").arg(fichas).arg(apuesta));
-    }
+// La apuesta va en pasos de 10 y nunca supera las fichas disponibles
+void BlackjackWidget::ajustarApuesta()
+{
+    m_apuesta = qBound(APUESTA_MINIMA, (m_apuesta / APUESTA_MINIMA) * APUESTA_MINIMA,
+                       qMax(APUESTA_MINIMA, (m_fichas / APUESTA_MINIMA) * APUESTA_MINIMA));
 }
 
-void BlackjackWidget::pedirCarta() {
-    if (estado != Estado::Jugando) return;
-
-    manoJugador.append(mazo.repartir());
-    int puntos = calcularPuntos(manoJugador);
-    if (puntos > 21) {
-        estado = Estado::Terminado;
-        fichas -= apuesta;
-        mensaje = "¡Te pasaste de 21! Pierdes " + QString::number(apuesta) + " fichas.";
-        emit fichasCambiadas(fichas);
-    }
+void BlackjackWidget::nuevaPartida()
+{
+    m_fichas = FICHAS_INICIALES;
+    m_apuesta = 50;
+    m_manoJugador.clear();
+    m_manoDealer.clear();
+    m_estado = Estado::Apostando;
+    m_mazo.reiniciar();
+    m_mensaje = tr("Nueva partida: tienes %1 fichas").arg(m_fichas);
+    guardar();
+    emit fichasCambiadas(m_fichas);
     actualizarBotones();
     update();
 }
 
-void BlackjackWidget::plantarse() {
-    if (estado != Estado::Jugando) return;
+void BlackjackWidget::aumentarApuesta()
+{
+    if (m_estado != Estado::Apostando) return;
+    const int paso = m_apuesta < 100 ? 10 : 50;
+    if (m_apuesta + paso <= m_fichas) m_apuesta += paso;
+    actualizarBotones();
+    update();
+}
 
+void BlackjackWidget::reducirApuesta()
+{
+    if (m_estado != Estado::Apostando) return;
+    const int paso = m_apuesta <= 100 ? 10 : 50;
+    m_apuesta = qMax(APUESTA_MINIMA, m_apuesta - paso);
+    actualizarBotones();
+    update();
+}
+
+void BlackjackWidget::repartir()
+{
+    if (m_estado != Estado::Apostando || m_apuesta > m_fichas) return;
+
+    if (m_mazo.necesitaBarajar())
+        m_mazo.reiniciar();
+
+    m_manoJugador = {m_mazo.repartir()};
+    m_manoDealer = {m_mazo.repartir()};
+    m_manoJugador.append(m_mazo.repartir());
+    m_manoDealer.append(m_mazo.repartir());
+    m_mensaje.clear();
+    m_estado = Estado::Jugando;
+    guardar();
+
+    // Blackjack de cualquiera de los dos termina la mano en el acto
+    if (esBlackjack(m_manoJugador) || esBlackjack(m_manoDealer))
+        resolver();
+
+    actualizarBotones();
+    update();
+}
+
+void BlackjackWidget::pedirCarta()
+{
+    if (m_estado != Estado::Jugando) return;
+
+    m_manoJugador.append(m_mazo.repartir());
+    const int puntos = calcularPuntos(m_manoJugador);
+    if (puntos > 21)
+        resolver();
+    else if (puntos == 21)
+        plantarse();  // con 21 no tiene sentido seguir pidiendo
+    actualizarBotones();
+    update();
+}
+
+void BlackjackWidget::plantarse()
+{
+    if (m_estado != Estado::Jugando) return;
     turnoDealer();
+    resolver();
     actualizarBotones();
     update();
 }
 
-void BlackjackWidget::nuevaRonda() {
-    manoJugador.clear();
-    manoDealer.clear();
-    mensaje.clear();
-    repartirCartasIniciales();
-    lblFichas->setText(QString("Fichas: %1 | Apuesta: %2").arg(fichas).arg(apuesta));
-    update();
-}
-
-void BlackjackWidget::repartirCartasIniciales() {
-    mazo.reiniciar();
-    manoJugador.clear();
-    manoDealer.clear();
-
-    manoJugador.append(mazo.repartir());
-    manoDealer.append(mazo.repartir());
-    manoJugador.append(mazo.repartir());
-    manoDealer.append(mazo.repartir());
-
-    estado = Estado::Jugando;
-    actualizarBotones();
-
-    if (esBlackjack(manoJugador)) {
+// Doblar: se duplica la apuesta, se recibe exactamente una carta y se planta
+void BlackjackWidget::doblar()
+{
+    if (m_estado != Estado::Jugando || m_manoJugador.size() != 2 || m_apuesta * 2 > m_fichas)
+        return;
+    m_apuesta *= 2;
+    m_manoJugador.append(m_mazo.repartir());
+    if (calcularPuntos(m_manoJugador) <= 21)
         turnoDealer();
-        actualizarBotones();
-    }
+    resolver();
+    m_apuesta /= 2;  // la siguiente ronda vuelve a la apuesta base
+    actualizarBotones();
+    update();
 }
 
-void BlackjackWidget::turnoDealer() {
-    while (calcularPuntos(manoDealer) < 17) {
-        manoDealer.append(mazo.repartir());
-    }
-
-    int puntosJugador = calcularPuntos(manoJugador);
-    int puntosDealer = calcularPuntos(manoDealer);
-    bool jugadorBlackjack = esBlackjack(manoJugador);
-
-    if (jugadorBlackjack && !esBlackjack(manoDealer)) {
-        int ganancia = static_cast<int>(apuesta * 2.5);
-        fichas += ganancia;
-        mensaje = "¡Blackjack natural! Ganaste " + QString::number(ganancia) + " fichas.";
-    } else if (puntosJugador > 21) {
-        mensaje = "¡Te pasaste! Pierdes " + QString::number(apuesta) + " fichas.";
-    } else if (puntosDealer > 21) {
-        fichas += apuesta;
-        mensaje = "¡Dealer se pasa! Ganaste " + QString::number(apuesta) + " fichas.";
-    } else if (puntosJugador > puntosDealer) {
-        fichas += apuesta;
-        mensaje = "¡Ganaste! Ganaste " + QString::number(apuesta) + " fichas.";
-    } else if (puntosJugador < puntosDealer) {
-        fichas -= apuesta;
-        mensaje = "¡Dealer gana! Pierdes " + QString::number(apuesta) + " fichas.";
-    } else {
-        mensaje = "Empate. Tus fichas se devuelven.";
-    }
-
-    emit fichasCambiadas(fichas);
-    estado = Estado::Terminado;
+// El crupier pide hasta 17 y se planta con cualquier 17 (regla S17)
+void BlackjackWidget::turnoDealer()
+{
+    while (calcularPuntos(m_manoDealer) < 17)
+        m_manoDealer.append(m_mazo.repartir());
 }
 
-int BlackjackWidget::calcularPuntos(const QVector<Carta> &mano) {
+void BlackjackWidget::pagar(int cambioFichas, const QString &texto)
+{
+    m_fichas += cambioFichas;
+    m_ultimoResultado = cambioFichas;
+    m_mensaje = texto;
+    m_estado = Estado::Terminado;
+    guardar();
+    emit fichasCambiadas(m_fichas);
+}
+
+void BlackjackWidget::resolver()
+{
+    const int jugador = calcularPuntos(m_manoJugador);
+    const int dealer = calcularPuntos(m_manoDealer);
+    const bool bjJugador = esBlackjack(m_manoJugador);
+    const bool bjDealer = esBlackjack(m_manoDealer);
+
+    if (bjJugador && bjDealer)
+        pagar(0, tr("Los dos tenéis Blackjack. Empate."));
+    else if (bjJugador)
+        pagar(m_apuesta * 3 / 2, tr("¡Blackjack! Ganas %1 fichas (paga 3:2).").arg(m_apuesta * 3 / 2));
+    else if (bjDealer)
+        pagar(-m_apuesta, tr("El crupier tiene Blackjack. Pierdes %1 fichas.").arg(m_apuesta));
+    else if (jugador > 21)
+        pagar(-m_apuesta, tr("Te pasaste de 21. Pierdes %1 fichas.").arg(m_apuesta));
+    else if (dealer > 21)
+        pagar(m_apuesta, tr("El crupier se pasa. Ganas %1 fichas.").arg(m_apuesta));
+    else if (jugador > dealer)
+        pagar(m_apuesta, tr("¡Ganas %1 fichas! (%2 contra %3)").arg(m_apuesta).arg(jugador).arg(dealer));
+    else if (jugador < dealer)
+        pagar(-m_apuesta, tr("Gana el crupier (%1 contra %2). Pierdes %3 fichas.").arg(dealer).arg(jugador).arg(m_apuesta));
+    else
+        pagar(0, tr("Empate a %1. Recuperas tu apuesta.").arg(jugador));
+
+    if (m_fichas < APUESTA_MINIMA)
+        m_mensaje += QLatin1Char('\n') + tr("Te quedaste sin fichas. Pulsa Nueva partida.");
+}
+
+void BlackjackWidget::siguienteRonda()
+{
+    if (m_estado != Estado::Terminado) return;
+    if (m_fichas < APUESTA_MINIMA) {
+        nuevaPartida();
+        return;
+    }
+    m_manoJugador.clear();
+    m_manoDealer.clear();
+    m_estado = Estado::Apostando;
+    ajustarApuesta();
+    m_mensaje = tr("Elige tu apuesta y pulsa Repartir");
+    actualizarBotones();
+    update();
+}
+
+int BlackjackWidget::calcularPuntos(const QVector<Carta> &mano, bool *blanda)
+{
     int total = 0;
-    int ases = 0;
-
+    bool hayAs = false;
     for (const Carta &carta : mano) {
         total += carta.valorBlackjack();
-        if (carta.esAs()) ases++;
+        hayAs = hayAs || carta.esAs();
     }
-
-    while (ases > 0 && total + 10 <= 21) {
-        total += 10;
-        ases--;
-    }
-
-    return total;
+    // Un As vale 11 si no hace pasarse (mano "blanda")
+    const bool usarOnce = hayAs && total + 10 <= 21;
+    if (blanda) *blanda = usarOnce;
+    return usarOnce ? total + 10 : total;
 }
 
-bool BlackjackWidget::esBlackjack(const QVector<Carta> &mano) {
+bool BlackjackWidget::esBlackjack(const QVector<Carta> &mano)
+{
     return mano.size() == 2 && calcularPuntos(mano) == 21;
 }
 
-void BlackjackWidget::actualizarBotones() {
-    btnApostarMas->setEnabled(estado == Estado::Apostando);
-    btnApostarMenos->setEnabled(estado == Estado::Apostando);
-    btnPedir->setEnabled(estado == Estado::Jugando);
-    btnPlantarse->setEnabled(estado == Estado::Jugando);
-    btnNuevaRonda->setEnabled(estado == Estado::Terminado);
+void BlackjackWidget::actualizarBotones()
+{
+    const bool apostando = m_estado == Estado::Apostando;
+    const bool jugando = m_estado == Estado::Jugando;
+    m_btnMenos->setVisible(apostando);
+    m_btnMas->setVisible(apostando);
+    m_btnRepartir->setVisible(apostando);
+    m_btnMenos->setEnabled(m_apuesta > APUESTA_MINIMA);
+    m_btnMas->setEnabled(m_apuesta + (m_apuesta < 100 ? 10 : 50) <= m_fichas);
+    m_btnRepartir->setEnabled(m_apuesta <= m_fichas);
 
-    if (fichas <= 0 && estado == Estado::Terminado) {
-        mensaje = "¡Te quedaste sin fichas! Juego terminado.";
-        btnNuevaRonda->setEnabled(false);
+    m_btnPedir->setVisible(jugando);
+    m_btnPlantarse->setVisible(jugando);
+    m_btnDoblar->setVisible(jugando);
+    m_btnDoblar->setEnabled(jugando && m_manoJugador.size() == 2 && m_apuesta * 2 <= m_fichas);
+
+    m_btnSiguiente->setVisible(m_estado == Estado::Terminado);
+    m_btnSiguiente->setText(m_fichas < APUESTA_MINIMA ? tr("Nueva partida") : tr("Nueva ronda (Enter)"));
+}
+
+void BlackjackWidget::keyPressEvent(QKeyEvent *event)
+{
+    switch (event->key()) {
+    case Qt::Key_H: pedirCarta(); break;
+    case Qt::Key_S: plantarse(); break;
+    case Qt::Key_D: doblar(); break;
+    case Qt::Key_Plus: case Qt::Key_Up: aumentarApuesta(); break;
+    case Qt::Key_Minus: case Qt::Key_Down: reducirApuesta(); break;
+    case Qt::Key_Return:
+    case Qt::Key_Enter:
+    case Qt::Key_Space:
+        if (m_estado == Estado::Apostando) repartir();
+        else if (m_estado == Estado::Terminado) siguienteRonda();
+        break;
+    default:
+        QWidget::keyPressEvent(event);
     }
 }
 
-void BlackjackWidget::paintEvent(QPaintEvent *event) {
-    Q_UNUSED(event);
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    painter.fillRect(rect(), QColor(0, 100, 0));
-
-    painter.setPen(Qt::white);
-    painter.setFont(QFont("Arial", 14, QFont::Bold));
-    painter.drawText(20, 50, "Dealer:");
-
-    painter.drawText(20, 280, "Jugador:");
-
-    if (estado == Estado::Jugando || estado == Estado::Terminado) {
-        for (int i = 0; i < manoDealer.size(); ++i) {
-            bool bocaArriba = (i != 1 || estado == Estado::Terminado);
-            dibujarCarta(painter, manoDealer[i], 20 + i * 80, 60, bocaArriba);
-        }
-
-        for (int i = 0; i < manoJugador.size(); ++i) {
-            dibujarCarta(painter, manoJugador[i], 20 + i * 80, 290, true);
-        }
-
-        painter.setFont(QFont("Arial", 12));
-        painter.drawText(20, 270, "Dealer: " + QString::number(calcularPuntos(manoDealer)));
-        painter.drawText(20, 430, "Jugador: " + QString::number(calcularPuntos(manoJugador)));
-    }
-
-    if (!mensaje.isEmpty()) {
-        painter.setPen(QColor(255, 255, 0));
-        painter.setFont(QFont("Arial", 16, QFont::Bold));
-        painter.drawText(rect(), Qt::AlignHCenter | Qt::AlignVCenter, mensaje);
-    }
+void BlackjackWidget::dibujarMano(QPainter &p, const QVector<Carta> &mano, int y, bool ocultarSegunda)
+{
+    if (mano.isEmpty()) return;
+    // Las cartas se solapan si la mano es larga para que siempre quepan
+    const int n = mano.size();
+    const int disponible = ANCHO - 2 * 40;
+    const int paso = qMin(CARTA_ANCHO + 14, n > 1 ? (disponible - CARTA_ANCHO) / (n - 1) : CARTA_ANCHO);
+    const int total = CARTA_ANCHO + (n - 1) * paso;
+    int x = (ANCHO - total) / 2;
+    for (int i = 0; i < n; ++i, x += paso)
+        CartaPainter::dibujar(p, mano[i], QRectF(x, y, CARTA_ANCHO, CARTA_ALTO), !(ocultarSegunda && i == 1));
 }
 
-void BlackjackWidget::dibujarCarta(QPainter &painter, const Carta &carta, int x, int y, bool bocaArriba) {
-    painter.setPen(Qt::black);
-    painter.setBrush(bocaArriba ? Qt::white : QColor(0, 0, 150));
-    painter.drawRoundedRect(x, y, 70, 100, 8, 8);
+void BlackjackWidget::paintEvent(QPaintEvent *)
+{
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
 
-    if (bocaArriba) {
-        QColor colorPalo = (carta.palo == Palo::Corazones || carta.palo == Palo::Diamantes)
-                            ? QColor(200, 0, 0) : QColor(0, 0, 0);
-        painter.setPen(colorPalo);
-        painter.setFont(QFont("Arial", 16, QFont::Bold));
-        painter.drawText(QRect(x, y + 5, 70, 30), Qt::AlignCenter, carta.nombreValor());
-        painter.setFont(QFont("Arial", 20));
-        painter.drawText(QRect(x, y + 30, 70, 40), Qt::AlignCenter, carta.nombrePalo());
+    // Tapete
+    QRadialGradient fondo(rect().center(), ANCHO * 0.7);
+    fondo.setColorAt(0, QColor(30, 120, 60));
+    fondo.setColorAt(1, QColor(10, 70, 35));
+    p.fillRect(rect(), fondo);
+    p.setPen(QPen(QColor(255, 255, 255, 40), 2));
+    p.setBrush(Qt::NoBrush);
+    p.drawArc(QRectF(-ANCHO * 0.1, ALTO * 0.35, ANCHO * 1.2, ALTO * 0.9), 20 * 16, 140 * 16);
+
+    QFont f = p.font();
+    f.setPixelSize(15);
+    f.setBold(true);
+    p.setFont(f);
+    p.setPen(QColor(235, 235, 220));
+
+    const bool oculta = m_estado == Estado::Jugando;
+    if (!m_manoDealer.isEmpty()) {
+        // Mientras la segunda carta esta oculta solo se muestra el valor de la visible
+        const QString pd = oculta ? QString::number(calcularPuntos({m_manoDealer.first()})) + QStringLiteral(" + ?")
+                                  : QString::number(calcularPuntos(m_manoDealer));
+        p.drawText(QRect(0, Y_DEALER - 30, ANCHO, 24), Qt::AlignCenter, tr("Crupier: %1").arg(pd));
+    } else {
+        p.drawText(QRect(0, Y_DEALER - 30, ANCHO, 24), Qt::AlignCenter, tr("Crupier"));
     }
+    dibujarMano(p, m_manoDealer, Y_DEALER, oculta);
+
+    if (!m_manoJugador.isEmpty()) {
+        bool blanda = false;
+        const int pj = calcularPuntos(m_manoJugador, &blanda);
+        const QString txt = (blanda && pj < 21) ? QStringLiteral("%1/%2").arg(pj - 10).arg(pj) : QString::number(pj);
+        p.drawText(QRect(0, Y_JUGADOR + CARTA_ALTO + 6, ANCHO, 24), Qt::AlignCenter, tr("Tú: %1").arg(txt));
+    }
+    dibujarMano(p, m_manoJugador, Y_JUGADOR, false);
+
+    // Franja de mensaje y apuesta
+    const QRect franja(0, Y_DEALER + CARTA_ALTO + 14, ANCHO, Y_JUGADOR - Y_DEALER - CARTA_ALTO - 28);
+    if (!m_mensaje.isEmpty()) {
+        QColor c(255, 225, 90);
+        if (m_estado == Estado::Terminado)
+            c = m_ultimoResultado > 0 ? QColor(140, 255, 140) : m_ultimoResultado < 0 ? QColor(255, 150, 140) : QColor(230, 230, 230);
+        p.setPen(c);
+        f.setPixelSize(17);
+        p.setFont(f);
+        p.drawText(franja, Qt::AlignCenter, m_mensaje);
+    }
+
+    // Ficha con la apuesta actual
+    const QPointF centroFicha(70, Y_JUGADOR + CARTA_ALTO / 2);
+    p.setPen(QPen(Qt::white, 3, Qt::DashLine));
+    p.setBrush(QColor(190, 30, 40));
+    p.drawEllipse(centroFicha, 34, 34);
+    p.setPen(Qt::white);
+    f.setPixelSize(16);
+    p.setFont(f);
+    p.drawText(QRectF(centroFicha.x() - 34, centroFicha.y() - 34, 68, 68), Qt::AlignCenter,
+               QString::number(m_apuesta));
+    f.setPixelSize(11);
+    f.setBold(false);
+    p.setFont(f);
+    p.drawText(QRectF(centroFicha.x() - 50, centroFicha.y() + 36, 100, 18), Qt::AlignCenter, tr("apuesta"));
 }

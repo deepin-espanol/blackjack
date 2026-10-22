@@ -1,3 +1,23 @@
+blackjack (0.2.0-1) unstable; urgency=medium
+
+  * El juego no se podia empezar: el boton Nueva Ronda solo se activaba
+    al terminar una mano. Nuevo flujo: apostar, Repartir,
+    Pedir/Plantarse/Doblar y Nueva ronda.
+  * El Blackjack natural pagaba 2,5 veces la apuesta; ahora paga 3:2 y
+    se revisa el Blackjack del crupier.
+  * La apuesta ya no puede superar las fichas (las fichas podian quedar
+    en negativo). Nueva partida al quedarse sin fichas.
+  * Ya no se revela la puntuacion del crupier mientras su segunda carta
+    esta boca abajo.
+  * Opcion de doblar la apuesta, zapato de 6 barajas y fichas guardadas
+    entre sesiones.
+  * Mesa y cartas redisenadas, atajos de teclado (H, S, D, Enter, +/-) y
+    mensajes que ya no tapan las cartas.
+  * Icono, archivo .desktop (antes no aparecia en el menu), dialogo
+    Acerca de, textos traducibles y paquete linyaps.
+
+ -- Deepin en Español <developers@deepinenespanol.org>  Wed, 04 Nov 2026 18:00:00 +0000
+
 blackjack (0.1.0-1) unstable; urgency=medium
 
   * Initial release with Qt6/DTK6.

@@ -15,5 +15,7 @@ Rules-Requires-Root: no
 Package: blackjack
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: Classic Blackjack card game for Deepin desktop
- A classic Blackjack (21) card game built with Qt6 and DTK6.
+Description: Blackjack (21) card game for Deepin desktop
+ A Blackjack (21) game against the dealer built with Qt6 and DTK6:
+ bet, hit, stand and double down, 3:2 blackjack payout, a six-deck
+ shoe and chips saved between sessions.

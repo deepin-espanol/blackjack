@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=BlackJack 21
+Name[es]=BlackJack 21
+GenericName=Card Game
+GenericName[es]=Juego de cartas
+Comment=Blackjack (21) card game against the dealer
+Comment[es]=Juego de cartas Blackjack (21) contra el crupier
+Exec=/usr/bin/blackjack
+Icon=blackjack
+Terminal=false
+Categories=Game;CardGame;
+Keywords=blackjack;21;cards;casino;
+Keywords[es]=blackjack;21;cartas;casino;veintiuno;
