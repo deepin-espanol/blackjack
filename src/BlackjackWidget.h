@@ -51,8 +51,8 @@ private:
     void guardar();
     void dibujarMano(QPainter &p, const QVector<Carta> &mano, int y, bool ocultarSegunda);
 
-    static const int FICHAS_INICIALES = 1000;
-    static const int APUESTA_MINIMA = 10;
+    static constexpr int FICHAS_INICIALES = 1000;
+    static constexpr int APUESTA_MINIMA = 10;
 
     Mazo m_mazo;
     QVector<Carta> m_manoJugador;
