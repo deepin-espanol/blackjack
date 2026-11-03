@@ -1,31 +1,60 @@
 # BlackJack 21
 
-Juego de BlackJack (21) desarrollado con Qt6 y DTK6 para Deepin Linux.
+Blackjack (21) contra el crupier. Desarrollado con **Qt6** y **Deepin Tool Kit (DTK6)** para Deepin Linux.
 
-## Compilación
+## Características
 
-```bash
-mkdir build && cd build
-cmake ..
-make
-```
-
-## Ejecución
-
-```bash
-./blackjack
-```
+- Apuesta, pide, plántate o dobla
+- Blackjack natural paga 3:2; el crupier se planta con 17
+- Zapato de 6 barajas
+- Fichas guardadas entre sesiones; nueva partida al quedarte sin fichas
+- Traducido al inglés
 
 ## Controles
 
-- **+50 / -50**: Ajustar apuesta (mínimo 50 fichas)
-- **Pedir**: Pedir otra carta
-- **Plantarse**: Terminar turno
-- **Nueva Ronda**: Empezar nueva mano
+| Tecla | Acción |
+|-------|--------|
+| H | Pedir carta |
+| S | Plantarse |
+| D | Doblar |
+| + / − (↑ / ↓) | Cambiar la apuesta |
+| Enter / Espacio | Repartir / nueva ronda |
+| Ctrl+N | Nueva partida (1000 fichas) |
+| Ctrl+Q | Salir |
 
-## Reglas
+## Instalación
 
-- Fichas iniciales: 1000
-- Blackjack natural paga 3:2
-- Dealer se planta en 17
-- Pasarse de 21 pierde
+Descarga el paquete de la [última release](https://github.com/deepin-espanol/blackjack/releases/latest):
+
+- `.deb` (amd64, arm64, riscv64, loong64):
+  ```bash
+  sudo apt install ./blackjack_*.deb
+  ```
+- `.uab` de linyaps (amd64, arm64): ejecutable directamente.
+  ```bash
+  chmod +x org.deepinenespanol.*.uab && ./org.deepinenespanol.*.uab
+  ```
+
+## Compilar
+
+```bash
+sudo apt build-dep ./          # dependencias declaradas en debian/control
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+./build/blackjack
+```
+
+O generar el paquete `.deb`:
+
+```bash
+dpkg-buildpackage -us -uc -b
+```
+
+## Publicar una versión
+
+Añade una entrada nueva en `debian/changelog` y haz push: el workflow
+*Build and publish .deb* crea la release con los `.deb` y los `.uab`.
+
+## Licencia
+
+GPL-3.0 o posterior. © Deepin en Español — https://deepinenespanol.org
