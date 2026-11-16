@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.16)
-project(blackjack VERSION 0.2.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 0.2.1)
+project(blackjack VERSION 0.2.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 
