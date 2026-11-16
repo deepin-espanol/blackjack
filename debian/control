@@ -1,7 +1,7 @@
 Source: blackjack
 Section: games
 Priority: optional
-Maintainer: Deepin en Español <developers@deepinenespanol.org>
+Maintainer: Alvaro Samudio <alvarosamudio@protonmail.com>
 Build-Depends: debhelper-compat (= 13),
                cmake,
                qt6-base-dev,
@@ -14,7 +14,7 @@ Rules-Requires-Root: no
 
 Package: blackjack
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, hicolor-icon-theme
 Description: Blackjack (21) card game for Deepin desktop
  A Blackjack (21) game against the dealer built with Qt6 and DTK6:
  bet, hit, stand and double down, 3:2 blackjack payout, a six-deck
